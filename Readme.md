@@ -7,9 +7,10 @@
 ![FFmpeg](https://img.shields.io/badge/FFmpeg-Audio_Processing-007808.svg)
 
 
-Deployment Link :- https://ragbasedaisystem-uxcphcie6u5t4wbywef9to.streamlit.app/
+Deployment Link :- 
 
-embedding.joblib Link :- https://drive.google.com/file/d/1GW6v3o_xhD_Dq6OLyFEvlsejFW8eBSAf/view?usp=sharing
+embedding.joblib Link :- https://drive.google.com/file/d/1DdbVHNfp-xb-A9sKPZEkTxbGcxuaXwYG/view?usp=sharing
+
 
 #UI
 

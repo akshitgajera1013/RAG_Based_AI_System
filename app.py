@@ -1,8 +1,8 @@
 # =========================================================================================
-# 🎓 SIGMA KNOWLEDGE NEXUS (ENTERPRISE RAG EDITION - MONOLITHIC BUILD)
-# Version: 16.1.0 | Build: Pure Gemini Cloud Architecture + Secure .env Integration
+# 🎓 SIGMA KNOWLEDGE NEXUS (ENTERPRISE RAG EDITION - HYBRID BUILD)
+# Version: 18.4.0 | Build: Local DB + Official HF SDK + Gemini Synthesis
 # Description: Advanced Vector Search Dashboard for Video Course Navigation.
-# Features Cloud GDrive fetching, Cosine Similarity Analytics, and 100% Google Gemini AI.
+# Features Local Repo DB loading, Cosine Similarity Analytics, and Hybrid AI Routing.
 # Theme: Sigma Nexus (Deep Space Black, Neon Purple, Cyber Blue)
 # =========================================================================================
 
@@ -17,14 +17,15 @@ from datetime import datetime
 import uuid
 import os
 import joblib
-import gdown
 from sklearn.metrics.pairwise import cosine_similarity
 import google.generativeai as genai
+from huggingface_hub import InferenceClient
 from dotenv import load_dotenv
 
 # Initialize environment variables from .env file
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+HF_TOKEN = os.getenv("HF_TOKEN")
 
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
@@ -40,30 +41,25 @@ st.set_page_config(
 )
 
 # =========================================================================================
-# 2. VECTOR DATABASE INGESTION (CLOUD FETCH & CACHE)
+# 2. VECTOR DATABASE INGESTION (LOCAL REPOSITORY FETCH)
 # =========================================================================================
-# Using your newly generated Gemini embeddings database
-GDRIVE_ID = "1DdbVHNfp-xb-A9sKPZEkTxbGcxuaXwYG" 
 DB_FILE = "embeddings.joblib"
 
 @st.cache_resource(show_spinner=False)
 def load_vector_database():
     """
-    Safely loads the Joblib DataFrame containing Whisper transcripts and Gemini embeddings.
-    If missing, downloads directly from Google Drive.
+    Loads the Joblib DataFrame containing Whisper transcripts and bge-m3 embeddings
+    directly from the local repository directory.
     """
-    df = None
     try:
-        if not os.path.exists(DB_FILE):
-            with st.spinner("Downloading high-dimensional vector database from secure cloud..."):
-                gdown.download(id=GDRIVE_ID, output=DB_FILE, quiet=False)
-        
         if os.path.exists(DB_FILE):
-            df = joblib.load(DB_FILE)
+            return joblib.load(DB_FILE)
+        else:
+            st.sidebar.error(f"Vector DB File ('{DB_FILE}') not found in the root directory.")
+            return None
     except Exception as e:
-        st.sidebar.error(f"Vector DB Fetch Error: {str(e)}")
-
-    return df
+        st.sidebar.error(f"Vector DB Load Error: {str(e)}")
+        return None
 
 vector_df = load_vector_database()
 
@@ -164,7 +160,7 @@ section[data-testid="stSidebar"] { background: #040406 !important; border-right:
 </style>""", unsafe_allow_html=True)
 
 # =========================================================================================
-# 4. SESSION STATE MANAGEMENT & GEMINI API ROUTING
+# 4. SESSION STATE MANAGEMENT & HYBRID API ROUTING
 # =========================================================================================
 if "session_id" not in st.session_state: st.session_state["session_id"] = f"RAG-IDX-{str(uuid.uuid4())[:8].upper()}"
 if "query" not in st.session_state: st.session_state["query"] = ""
@@ -173,27 +169,50 @@ if "context_chunks" not in st.session_state: st.session_state["context_chunks"] 
 if "similarity_scores" not in st.session_state: st.session_state["similarity_scores"] = None
 if "compute_latency" not in st.session_state: st.session_state["compute_latency"] = 0.0
 
-def create_embedding(text_list):
-    """Hits Google Gemini API for highly accurate Text Embeddings."""
+def create_embedding(text_list, hf_token):
+    """Hits HuggingFace Serverless API using the official, robust Python SDK."""
     try:
-        result = genai.embed_content(
-            model="models/text-embedding-004",
-            content=text_list,
-            task_type="retrieval_query"
-        )
-        return result['embedding']
+        client = InferenceClient(token=hf_token)
+        
+        # The SDK completely handles URL routing, headers, and parsing
+        embeddings = client.feature_extraction(text_list, model="BAAI/bge-m3")
+        
+        # Convert NumPy array to standard Python list if necessary
+        if hasattr(embeddings, "tolist"):
+            return embeddings.tolist()
+            
+        return embeddings
+        
     except Exception as e:
-        st.error(f"Embedding Error: {e}")
+        st.error(f"Hugging Face SDK Error: {str(e)}")
         return None
 
 def inference(prompt):
-    """Hits Google Gemini API for fast RAG generation."""
+    """Hits Google Gemini API by automatically discovering your allowed models."""
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # Step 1: Ask Google for a list of all models your API key has access to
+        valid_models = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                valid_models.append(m.name)
+                
+        if not valid_models:
+            return "Gemini API Error: Your API key does not have access to any text generation models."
+            
+        # Step 2: Automatically select the best available model (Prefer 'flash' for speed)
+        target_model = valid_models[0] # Default to the first valid one
+        for model_name in valid_models:
+            if "flash" in model_name.lower():
+                target_model = model_name
+                break
+                
+        # Step 3: Generate the response using the verified model
+        model = genai.GenerativeModel(target_model)
         response = model.generate_content(prompt)
         return response.text
+        
     except Exception as e:
-        return f"Gemini API Error: {str(e)}"
+        return f"Gemini Dynamic API Error: {str(e)}"
 
 # =========================================================================================
 # 5. ENTERPRISE SIDEBAR LOGIC (SYSTEM TELEMETRY)
@@ -211,7 +230,7 @@ f"""<div style='text-align:center; padding:20px 0 30px;'>
 """<div style="background:rgba(0,0,0,0.6); padding:18px; border-radius:8px; border:1px solid rgba(181, 53, 255, 0.15); font-family:Inter; font-size:12px; color:rgba(248,250,252,0.7); line-height:1.8;">
 <b>Audio Extraction:</b> FFmpeg<br>
 <b>Transcription:</b> Whisper (Large-v2)<br>
-<b>Vectorization:</b> Gemini (text-embedding-004)<br>
+<b>Vectorization:</b> Hugging Face (bge-m3)<br>
 <b>Generator:</b> Gemini (1.5 Flash)<br>
 <b>Security:</b> .env Synchronized<br>
 </div>""", unsafe_allow_html=True)
@@ -223,8 +242,7 @@ f"""<div style='text-align:center; padding:20px 0 30px;'>
         st.markdown(f'<div class="telemetry-card"><div class="telemetry-val" style="color:var(--neon-purple);">{v_count:,}</div><div class="telemetry-lbl">Vectors</div></div>', unsafe_allow_html=True)
         st.markdown(f'<div class="telemetry-card"><div class="telemetry-val" style="font-size:20px;">Top 5</div><div class="telemetry-lbl">K-Retrieval</div></div>', unsafe_allow_html=True)
     with col_s2:
-        # Gemini text-embedding-004 uses 768 dimensions
-        st.markdown('<div class="telemetry-card"><div class="telemetry-val" style="color:var(--cyber-blue);">768</div><div class="telemetry-lbl">Dimensions</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="telemetry-card"><div class="telemetry-val" style="color:var(--cyber-blue);">1024</div><div class="telemetry-lbl">Dimensions</div></div>', unsafe_allow_html=True)
         st.markdown(f'<div class="telemetry-card"><div class="telemetry-val" style="font-size:20px;">{st.session_state["compute_latency"]}s</div><div class="telemetry-lbl">Latency</div></div>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -238,7 +256,7 @@ f"""<div style='text-align:center; padding:20px 0 30px;'>
 # =========================================================================================
 st.markdown(
 """<div class="hero">
-<div class="hero-badge">SERVERLESS RAG ARCHITECTURE | PURE GEMINI</div>
+<div class="hero-badge">SERVERLESS HYBRID RAG | HUGGINGFACE + GEMINI</div>
 <div class="hero-title">SIGMA COURSE <em>NAVIGATOR</em></div>
 <div class="hero-sub">AI-Powered Vector Search & Video Timestamp Retrieval</div>
 </div>""", unsafe_allow_html=True)
@@ -264,22 +282,23 @@ with tab1:
     query = st.text_input("Query Input", placeholder="E.g., Which video teaches about MongoDB connections, and at what time?")
     
     if st.button("EXECUTE VECTOR SEARCH & SYNTHESIZE"):
-        if not GEMINI_API_KEY:
-            st.error("⚠️ Missing API Key. Please ensure your `.env` file contains `GEMINI_API_KEY`.")
+        if not GEMINI_API_KEY or not HF_TOKEN:
+            st.error("⚠️ Missing API Keys. Please ensure your `.env` file contains both `GEMINI_API_KEY` and `HF_TOKEN`.")
         elif not query.strip():
             st.warning("Please enter a query.")
         elif vector_df is None:
             st.error("Vector Database not loaded.")
         else:
-            with st.spinner("Embedding query via Gemini, calculating Cosine Similarity, and triggering Synthesis..."):
+            with st.spinner("Embedding query via Hugging Face, calculating Cosine Similarity, and triggering Synthesis..."):
                 start_time = time.time()
                 st.session_state["query"] = query
                 
-                # 1. Embed Query via Gemini
-                q_embedding = create_embedding([query])
+                # 1. Embed Query via Hugging Face SDK
+                q_embedding = create_embedding([query], HF_TOKEN)
                 
                 if q_embedding is None:
-                    st.error("Failed to fetch embeddings from Gemini API. Check your token limits or internet connection.")
+                    # Error is handled directly within create_embedding now
+                    pass
                 else:
                     # 2. Calculate Cosine Similarity
                     question_vector = q_embedding[0]
@@ -361,8 +380,8 @@ with tab3:
 <p style="color:var(--text-muted); font-size:13px; margin-top:10px;">Audio is extracted via FFmpeg and passed to OpenAI Whisper. The model transcribes the Hindi speech into English text, attaching exact start/end timestamps to every sentence.</p>
 </div>
 <div style="flex: 1 1 30%; background:rgba(255,255,255,0.02); padding:20px; border-radius:8px;">
-<code style="color:var(--neon-purple); font-size:16px;">2. Text Vectorization (Gemini Embeddings)</code>
-<p style="color:var(--text-muted); font-size:13px; margin-top:10px;">Each text chunk is sent to Google, where the text-embedding-004 model maps the semantic meaning of the sentence into a 768-dimensional array of numbers.</p>
+<code style="color:var(--neon-purple); font-size:16px;">2. Text Vectorization (Hugging Face)</code>
+<p style="color:var(--text-muted); font-size:13px; margin-top:10px;">Each text chunk is sent to Hugging Face via the official SDK, where the BGE-M3 model maps the semantic meaning of the sentence into a 1024-dimensional array of numbers.</p>
 </div>
 <div style="flex: 1 1 30%; background:rgba(255,255,255,0.02); padding:20px; border-radius:8px;">
 <code style="color:var(--neon-purple); font-size:16px;">3. Cosine Similarity Engine</code>
@@ -419,6 +438,11 @@ with tab5:
     else:
         st.error("❌ **Gemini API Key:** Not found. Please add `GEMINI_API_KEY` to your environment.")
         
+    if HF_TOKEN:
+        st.success("✅ **Hugging Face Token:** Successfully loaded from secure `.env` file or Streamlit Secrets.")
+    else:
+        st.error("❌ **Hugging Face Token:** Not found. Please add `HF_TOKEN` to your environment.")
+        
     st.info("The system is now fully localized and secure. API Keys are no longer stored in active session state.")
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -452,6 +476,6 @@ with tab6:
 # =========================================================================================
 st.markdown(
 """<div style="text-align:center; padding:70px; margin-top:100px; border-top:1px solid rgba(255,255,255,0.05); font-family:'Space Mono'; font-size:11px; color:rgba(148,163,184,0.3); letter-spacing:4px; text-transform:uppercase;">
-&copy; 2026 | Sigma Knowledge Nexus v16.1<br>
-<span style="color:rgba(0, 229, 255,0.5); font-size:10px; display:block; margin-top:10px;">Powered by 100% Google Gemini AI Architecture</span>
+&copy; 2026 | Sigma Knowledge Nexus v18.4<br>
+<span style="color:rgba(0, 229, 255,0.5); font-size:10px; display:block; margin-top:10px;">Powered by Hybrid Google Gemini + HuggingFace Architecture</span>
 </div>""", unsafe_allow_html=True)

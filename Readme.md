@@ -1,103 +1,248 @@
-# 🎓 Sigma Course Assistant: Video-to-Text RAG Pipeline
+<div align="center">
 
-![Python](https://img.shields.io/badge/Python-3.9%2B-blue.svg)
-![Ollama](https://img.shields.io/badge/Local_LLM-Ollama-000000.svg?logo=meta)
-![Whisper](https://img.shields.io/badge/OpenAI-Whisper-412991.svg)
-![Scikit-Learn](https://img.shields.io/badge/Scikit--Learn-Machine%20Learning-F7931E.svg)
-![FFmpeg](https://img.shields.io/badge/FFmpeg-Audio_Processing-007808.svg)
+# 🎓 Sigma Course Assistant
+### A Video-to-Text RAG Pipeline for Intelligent Course Navigation
+
+[![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
+[![Ollama](https://img.shields.io/badge/Local_LLM-Ollama-000000?style=for-the-badge)](https://ollama.com)
+[![Whisper](https://img.shields.io/badge/OpenAI-Whisper-412991?style=for-the-badge&logo=openai&logoColor=white)](https://github.com/openai/whisper)
+[![Scikit-Learn](https://img.shields.io/badge/Scikit--Learn-F7931E?style=for-the-badge&logo=scikit-learn&logoColor=white)](https://scikit-learn.org)
+[![FFmpeg](https://img.shields.io/badge/FFmpeg-007808?style=for-the-badge&logo=ffmpeg&logoColor=white)](https://ffmpeg.org)
+[![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://streamlit.io)
+
+**Stop scrubbing through hours of video. Ask a question. Get the exact timestamp.**
+
+[🚀 Live Demo](https://ragbasedaisystem-5twct2vzcou9c6sdj4jsnp.streamlit.app/) · [📦 Download Embeddings](https://drive.google.com/file/d/1DdbVHNfp-xb-A9sKPZEkTxbGcxuaXwYG/view?usp=sharing) · [Report Bug](https://github.com/akshitgajera1013/RAG_Based_AI_System/issues)
+
+</div>
+
+---
+
+## 📌 Overview
+
+**Sigma Course Assistant** is a fully local Retrieval-Augmented Generation (RAG) system that solves the "needle in a haystack" problem for students navigating large video courses.
+
+Instead of manually scrubbing through hours of content, students simply ask a natural language question. The system searches through transcribed, vectorized video chunks and uses a local LLM (`llama3.2`) to return the **exact video title** and **precise timestamp** where the topic is taught — all without sending any data to the cloud.
+
+### ✨ Key Features
+
+- 🔒 **Fully Local** — No API keys, no cloud dependency. Runs entirely on your machine via Ollama.
+- 🎯 **Timestamp-Level Precision** — Pinpoints the exact moment in a video where your topic is discussed.
+- 🌐 **Multilingual Support** — Whisper transcription with Hindi translation out of the box.
+- ⚡ **Fast Retrieval** — Pre-computed embeddings with cosine similarity for near-instant search.
+- 🖥️ **Streamlit UI** — Clean, interactive web interface for querying the knowledge base.
+
+---
+
+## 🖼️ Screenshots
+
+| Home | Query Results |
+|------|---------------|
+| ![UI 1](images/1.png) | ![UI 2](images/2.png) |
+| ![UI 3](images/3.png) | ![UI 4](images/4.png) |
+
+---
+
+## 🏗️ Architecture
+
+The system processes raw `.mp4` video files into a searchable, AI-powered knowledge base through 4 sequential phases:
+
+```
+📹 Raw Videos (.mp4)
+      │
+      ▼
+┌─────────────────────────────┐
+│  Phase 1: Audio Extraction  │  videos_to_mp3.py  →  FFmpeg
+│  .mp4 → .mp3                │
+└─────────────┬───────────────┘
+              │
+              ▼
+┌──────────────────────────────────┐
+│  Phase 2: Transcription          │  mp3_to_json.py  →  Whisper (large-v2)
+│  .mp3 → .json (with timestamps)  │
+└──────────────┬───────────────────┘
+               │
+               ▼
+┌──────────────────────────────────────┐
+│  Phase 3: Vectorization              │  preprocess_json.py  →  Ollama (bge-m3)
+│  .json → embeddings.joblib           │
+└────────────────┬─────────────────────┘
+                 │
+                 ▼
+┌──────────────────────────────────────────────┐
+│  Phase 4: RAG Inference                      │  process_incoming.py  →  llama3.2
+│  Query → Cosine Similarity → Top-5 Chunks    │
+│         → LLM Response (Video + Timestamp)   │
+└──────────────────────────────────────────────┘
+```
+
+| Phase | Script | Tool | Description |
+|-------|--------|------|-------------|
+| 1 | `videos_to_mp3.py` | FFmpeg | Strips audio from `.mp4` files, parsing tutorial number and title from filenames |
+| 2 | `mp3_to_json.py` | Whisper large-v2 | Transcribes audio to text with `start`/`end` timestamps, saved as structured JSON |
+| 3 | `preprocess_json.py` | Ollama `bge-m3` | Generates high-dimensional embeddings via local Ollama; serializes vectors to `embeddings.joblib` |
+| 4 | `process_incoming.py` | Ollama `llama3.2` | Embeds query, retrieves Top-5 chunks via cosine similarity, generates a guided response |
+
+---
+
+## 📁 Project Structure
+
+```
+RAG_Based_AI_System/
+├── 📂 videos/                  # Raw input course videos (.mp4)
+├── 📂 audios/                  # Extracted audio files (.mp3)
+├── 📂 jsons/                   # Whisper transcription chunks with timestamps
+├── 📂 images/                  # UI screenshots for README
+├── 📜 videos_to_mp3.py         # Phase 1: Audio extraction via FFmpeg
+├── 📜 mp3_to_json.py           # Phase 2: Transcription via Whisper
+├── 📜 preprocess_json.py       # Phase 3: Embedding generation via Ollama
+├── 📜 process_incoming.py      # Phase 4: RAG query inference
+├── 📜 embeddings.joblib        # Pre-built serialized vector database
+├── 📜 app.py                   # Streamlit web interface
+└── 📜 README.md
+```
+
+---
+
+## ⚙️ Prerequisites
+
+### System Dependencies
+
+**FFmpeg** — Required for audio extraction.
+
+```bash
+# Windows
+winget install ffmpeg
+
+# macOS
+brew install ffmpeg
+
+# Linux
+sudo apt install ffmpeg
+```
+
+**Ollama** — Required for local LLM inference. [Download here](https://ollama.com/download), then pull the required models:
+
+```bash
+ollama pull bge-m3       # Embedding model
+ollama pull llama3.2     # Generation model
+```
+
+> ⚠️ Make sure the Ollama server is running before executing Phases 3 and 4.
+
+---
+
+## 🚀 Getting Started
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/akshitgajera1013/RAG_Based_AI_System.git
+cd RAG_Based_AI_System
+```
+
+### 2. Set Up Python Environment
+
+```bash
+python -m venv venv
+
+# Activate (Linux/macOS)
+source venv/bin/activate
+
+# Activate (Windows)
+venv\Scripts\activate
+
+pip install openai-whisper pandas numpy scikit-learn requests joblib streamlit
+```
+
+### 3. Run the Pipeline
+
+> **Skip to Step 4** if you just downloaded the pre-built `embeddings.joblib` from the link above.
+
+**Phase 1 — Extract Audio**
+
+Place your `.mp4` course files inside the `videos/` directory, then run:
+
+```bash
+python videos_to_mp3.py
+```
+
+**Phase 2 — Transcribe Audio**
+
+```bash
+python mp3_to_json.py
+```
+
+**Phase 3 — Build the Vector Database**
+
+Ensure Ollama is running, then:
+
+```bash
+python preprocess_json.py
+```
+
+**Phase 4 — Query the System**
+
+```bash
+python process_incoming.py
+```
+
+You'll be prompted with `Ask a Question:`. The LLM will return the exact video title and timestamp where your topic is taught.
+
+### 4. Launch the Web UI (Optional)
+
+```bash
+streamlit run app.py
+```
+
+Or visit the [live hosted demo](https://ragbasedaisystem-5twct2vzcou9c6sdj4jsnp.streamlit.app/) directly.
+
+---
+
+## 💡 Example Usage
+
+```
+Ask a Question: How do I use useState hook in React?
+
+📹 Answer:
+The topic "useState Hook" is covered in:
+  → Tutorial [12] | React Hooks Introduction
+    ⏱ Timestamp: 4:32 – 7:15
+
+  → Tutorial [14] | State Management Basics
+    ⏱ Timestamp: 1:10 – 3:45
+```
+
+---
+
+## 🛠️ Tech Stack
+
+| Component | Technology |
+|-----------|------------|
+| Audio Extraction | FFmpeg |
+| Speech-to-Text | OpenAI Whisper (large-v2) |
+| Text Embeddings | Ollama `bge-m3` |
+| LLM Generation | Ollama `llama3.2` |
+| Similarity Search | Scikit-Learn (Cosine Similarity) |
+| Data Serialization | Pandas + Joblib |
+| Web Interface | Streamlit |
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! If you find a bug or have a feature request, please open an [issue](https://github.com/akshitgajera1013/RAG_Based_AI_System/issues).
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/your-feature`)
+3. Commit your changes (`git commit -m 'Add your feature'`)
+4. Push to the branch (`git push origin feature/your-feature`)
+5. Open a Pull Request
+
+---
 
 
-Deployment Link :- https://ragbasedaisystem-5twct2vzcou9c6sdj4jsnp.streamlit.app/
 
-embedding.joblib Link :- https://drive.google.com/file/d/1DdbVHNfp-xb-A9sKPZEkTxbGcxuaXwYG/view?usp=sharing
-
-
-#UI
-
-![Output](images/1.png)
-
-![Output](images/2.png)
-
-![Output](images/3.png)
-
-![Output](images/4.png)
-
-
-
-## 📌 Project Overview
-The **Sigma Course Assistant** is a fully localized Retrieval-Augmented Generation (RAG) system designed to solve the "needle in a haystack" problem for students navigating massive video courses. 
-
-Instead of manually scrubbing through hours of video to find specific topics, students can ask natural language questions. The system searches through transcribed, vectorized video chunks and uses a local LLM (`llama3.2`) to tell the student exactly **which video** and at **what exact timestamp** the topic is taught.
-
-## 🚀 Pipeline Architecture
-This project processes raw `.mp4` video files into a searchable, AI-driven knowledge base across 4 distinct phases:
-
-1. **🎬 Audio Extraction (`videos_to_mp3.py`):** Uses `ffmpeg` to strip audio from course videos, intelligently extracting the tutorial number and title directly from the filename.
-2. **📝 Transcription & Chunking (`mp3_to_json.py`):** Utilizes OpenAI's `Whisper` (Large-v2) to transcribe the audio (translated to Hindi). It segments the text and captures precise `start` and `end` timestamps, saving the structured metadata as JSON.
-3. **🧠 Vectorization (`preprocess_json.py`):** Connects to a local **Ollama** instance to generate high-dimensional text embeddings using the `bge-m3` model. The vectors and metadata are stored in a Pandas DataFrame and serialized via `joblib` for rapid retrieval.
-4. **🔍 RAG Inference (`process_incoming.py`):** Accepts student queries, calculates Cosine Similarity against the vectorized database, retrieves the Top-5 most relevant video chunks, and injects them into a prompt for `llama3.2` to generate a helpful, conversational guide.
-
-## 📁 Repository Structure
-
-📦 Sigma-Course-RAG
-
-    ┣ 📂 videos/              # Raw input course videos (e.g., "Tutorial [01] #1 ｜ Setup.mp4")
-    ┣ 📂 audios/              # Extracted .mp3 files
-    ┣ 📂 jsons/               # Whisper transcription chunks with timestamps
-    ┣ 📜 videos_to_mp3.py     # Phase 1: FFmpeg Extraction
-    ┣ 📜 mp3_to_json.py       # Phase 2: Whisper Transcription
-    ┣ 📜 preprocess_json.py   # Phase 3: Embedding Generation
-    ┣ 📜 process_incoming.py  # Phase 4: LLM Query Inference
-    ┣ 📜 embeddings.joblib    # Serialized vector database
-    ┗ 📜 README.md            # System documentation
-
-🛠️ Prerequisites & Installation
-1. System Dependencies
-   
-        FFmpeg: Must be installed on your system and added to your system's PATH.
-        
-        Windows: winget install ffmpeg or download from the official site.
-        
-        Linux/Mac: sudo apt install ffmpeg or brew install ffmpeg
-        
-        Ollama: Download and install Ollama to run local LLMs.
-
-3. Pull Local LLM Models
-
-4. Start your Ollama server, open your terminal, and pull the required embedding and generation models:
-   
-        ollama pull bge-m3
-        ollama pull llama3.2
-
-
-3. Python Environment Setup
-Clone the repository and install the required Python packages:
-
-        git clone [https://github.com/akshitgajera1013/RAG_Based_AI_System.git](https://github.com/akshitgajera1013/RAG_Based_AI_System.git)
-        cd RAG_Based_AI_System
-        python -m venv venv
-        source venv/bin/activate  # On Windows: venv\Scripts\activate
-        pip install openai-whisper pandas numpy scikit-learn requests joblib
-
-
-🏃‍♂️ Running the Pipeline
-Step 1: Extract Audio
-Place your .mp4 course files in the videos/ directory and run:
-
-    python videos_to_mp3.py
-
-Step 2: Generate Transcripts
-
-    python mp3_to_json.py
-
-Step 3: Build the Vector Database
-Ensure Ollama is running in the background, then execute:
-
-    python preprocess_json.py
-
-Step 4: Ask Questions!
-Launch the inference engine to test the RAG system:
-
-    python process_incoming.py
-
-The terminal will prompt you to "Ask a Question:". The LLM will then output the exact video title and timestamps where your query is discussed!
+<div align="center">
+Made with ❤️ by <a href="https://github.com/akshitgajera1013">Akshit Gajera</a>
+</div>

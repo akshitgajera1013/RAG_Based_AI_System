@@ -1,2 +1,4 @@
 .env
 RAG.txt
+embeddings.joblib
+app_3.py

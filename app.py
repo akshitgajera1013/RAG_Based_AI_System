@@ -1,6 +1,6 @@
 # =========================================================================================
 # 🎓 SIGMA KNOWLEDGE NEXUS (ENTERPRISE RAG EDITION - HYBRID BUILD)
-# Version: 18.4.0 | Build: Local DB + Official HF SDK + Gemini Synthesis
+# Version: 18.5.0 | Build: Local Sentence Transformers + Gemini Synthesis
 # Description: Advanced Vector Search Dashboard for Video Course Navigation.
 # Features Local Repo DB loading, Cosine Similarity Analytics, and Hybrid AI Routing.
 # Theme: Sigma Nexus (Deep Space Black, Neon Purple, Cyber Blue)
@@ -19,13 +19,12 @@ import os
 import joblib
 from sklearn.metrics.pairwise import cosine_similarity
 import google.generativeai as genai
-from huggingface_hub import InferenceClient
+from sentence_transformers import SentenceTransformer
 from dotenv import load_dotenv
 
 # Initialize environment variables from .env file
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-HF_TOKEN = os.getenv("HF_TOKEN")
 
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
@@ -62,6 +61,55 @@ def load_vector_database():
         return None
 
 vector_df = load_vector_database()
+
+# Use a lightweight embedding model that runs inside Streamlit Community Cloud.
+# The old database contains BGE-M3 vectors (1024 dimensions); these are not
+# compatible with MiniLM vectors, so all transcript chunks must be re-embedded.
+EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+EMBEDDING_DIMENSIONS = 384
+
+
+@st.cache_resource(show_spinner=False)
+def load_embedding_model():
+    """Load and cache the lightweight embedding model on the Streamlit server."""
+    return SentenceTransformer(EMBEDDING_MODEL_NAME)
+
+
+@st.cache_data(show_spinner=False, max_entries=2)
+def embed_document_texts(texts):
+    """Create/cache vectors for every transcript chunk using the same model as queries."""
+    model = load_embedding_model()
+    vectors = model.encode(
+        list(texts),
+        batch_size=16,
+        show_progress_bar=False,
+        normalize_embeddings=True,
+        convert_to_numpy=True,
+    )
+    return vectors.tolist()
+
+
+if vector_df is not None:
+    if "text" not in vector_df.columns:
+        st.error("Vector database is missing the required 'text' column.")
+        vector_df = None
+    else:
+        try:
+            with st.spinner("Preparing transcript embeddings for Streamlit Cloud..."):
+                document_texts = tuple(
+                    "" if pd.isna(value) else str(value)
+                    for value in vector_df["text"].tolist()
+                )
+                rebuilt_embeddings = embed_document_texts(document_texts)
+                vector_df = vector_df.copy()
+                vector_df["embedding"] = rebuilt_embeddings
+        except Exception as e:
+            st.error(f"Embedding model initialization failed: {e}")
+            st.info(
+                "Check that sentence-transformers is listed in requirements.txt "
+                "and that the Streamlit app has enough memory to load the model."
+            )
+            vector_df = None
 
 # =========================================================================================
 # 3. ENTERPRISE CSS INJECTION (SIGMA THEME)
@@ -169,23 +217,21 @@ if "context_chunks" not in st.session_state: st.session_state["context_chunks"] 
 if "similarity_scores" not in st.session_state: st.session_state["similarity_scores"] = None
 if "compute_latency" not in st.session_state: st.session_state["compute_latency"] = 0.0
 
-def create_embedding(text_list, hf_token):
-    """Hits HuggingFace Serverless API using the official, robust Python SDK."""
+def create_embedding(text_list, hf_token=None):
+    """Generate query embeddings locally; no Hugging Face Inference API credits needed."""
     try:
-        client = InferenceClient(token=hf_token)
-        
-        # The SDK completely handles URL routing, headers, and parsing
-        embeddings = client.feature_extraction(text_list, model="BAAI/bge-m3")
-        
-        # Convert NumPy array to standard Python list if necessary
-        if hasattr(embeddings, "tolist"):
-            return embeddings.tolist()
-            
-        return embeddings
-        
+        model = load_embedding_model()
+        embeddings = model.encode(
+            text_list,
+            show_progress_bar=False,
+            normalize_embeddings=True,
+            convert_to_numpy=True,
+        )
+        return embeddings.tolist()
     except Exception as e:
-        st.error(f"Hugging Face SDK Error: {str(e)}")
+        st.error(f"Local embedding error: {str(e)}")
         return None
+
 
 def inference(prompt):
     """Hits Google Gemini API by automatically discovering your allowed models."""
@@ -230,7 +276,7 @@ f"""<div style='text-align:center; padding:20px 0 30px;'>
 """<div style="background:rgba(0,0,0,0.6); padding:18px; border-radius:8px; border:1px solid rgba(181, 53, 255, 0.15); font-family:Inter; font-size:12px; color:rgba(248,250,252,0.7); line-height:1.8;">
 <b>Audio Extraction:</b> FFmpeg<br>
 <b>Transcription:</b> Whisper (Large-v2)<br>
-<b>Vectorization:</b> Hugging Face (bge-m3)<br>
+<b>Vectorization:</b> Local Sentence Transformers (MiniLM)<br>
 <b>Generator:</b> Gemini (1.5 Flash)<br>
 <b>Security:</b> .env Synchronized<br>
 </div>""", unsafe_allow_html=True)
@@ -242,7 +288,7 @@ f"""<div style='text-align:center; padding:20px 0 30px;'>
         st.markdown(f'<div class="telemetry-card"><div class="telemetry-val" style="color:var(--neon-purple);">{v_count:,}</div><div class="telemetry-lbl">Vectors</div></div>', unsafe_allow_html=True)
         st.markdown(f'<div class="telemetry-card"><div class="telemetry-val" style="font-size:20px;">Top 5</div><div class="telemetry-lbl">K-Retrieval</div></div>', unsafe_allow_html=True)
     with col_s2:
-        st.markdown('<div class="telemetry-card"><div class="telemetry-val" style="color:var(--cyber-blue);">1024</div><div class="telemetry-lbl">Dimensions</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="telemetry-card"><div class="telemetry-val" style="color:var(--cyber-blue);">384</div><div class="telemetry-lbl">Dimensions</div></div>', unsafe_allow_html=True)
         st.markdown(f'<div class="telemetry-card"><div class="telemetry-val" style="font-size:20px;">{st.session_state["compute_latency"]}s</div><div class="telemetry-lbl">Latency</div></div>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -256,7 +302,7 @@ f"""<div style='text-align:center; padding:20px 0 30px;'>
 # =========================================================================================
 st.markdown(
 """<div class="hero">
-<div class="hero-badge">SERVERLESS HYBRID RAG | HUGGINGFACE + GEMINI</div>
+<div class="hero-badge">CLOUD RAG | LOCAL EMBEDDINGS + GEMINI</div>
 <div class="hero-title">SIGMA COURSE <em>NAVIGATOR</em></div>
 <div class="hero-sub">AI-Powered Vector Search & Video Timestamp Retrieval</div>
 </div>""", unsafe_allow_html=True)
@@ -282,19 +328,19 @@ with tab1:
     query = st.text_input("Query Input", placeholder="E.g., Which video teaches about MongoDB connections, and at what time?")
     
     if st.button("EXECUTE VECTOR SEARCH & SYNTHESIZE"):
-        if not GEMINI_API_KEY or not HF_TOKEN:
-            st.error("⚠️ Missing API Keys. Please ensure your `.env` file contains both `GEMINI_API_KEY` and `HF_TOKEN`.")
+        if not GEMINI_API_KEY:
+            st.error("⚠️ Missing Gemini API key. Add GEMINI_API_KEY to Streamlit Secrets.")
         elif not query.strip():
             st.warning("Please enter a query.")
         elif vector_df is None:
             st.error("Vector Database not loaded.")
         else:
-            with st.spinner("Embedding query via Hugging Face, calculating Cosine Similarity, and triggering Synthesis..."):
+            with st.spinner("Embedding query, calculating Cosine Similarity, and triggering Synthesis..."):
                 start_time = time.time()
                 st.session_state["query"] = query
                 
-                # 1. Embed Query via Hugging Face SDK
-                q_embedding = create_embedding([query], HF_TOKEN)
+                # 1. Embed Query using the local Sentence Transformers model
+                q_embedding = create_embedding([query])
                 
                 if q_embedding is None:
                     # Error is handled directly within create_embedding now
@@ -380,8 +426,8 @@ with tab3:
 <p style="color:var(--text-muted); font-size:13px; margin-top:10px;">Audio is extracted via FFmpeg and passed to OpenAI Whisper. The model transcribes the Hindi speech into English text, attaching exact start/end timestamps to every sentence.</p>
 </div>
 <div style="flex: 1 1 30%; background:rgba(255,255,255,0.02); padding:20px; border-radius:8px;">
-<code style="color:var(--neon-purple); font-size:16px;">2. Text Vectorization (Hugging Face)</code>
-<p style="color:var(--text-muted); font-size:13px; margin-top:10px;">Each text chunk is sent to Hugging Face via the official SDK, where the BGE-M3 model maps the semantic meaning of the sentence into a 1024-dimensional array of numbers.</p>
+<code style="color:var(--neon-purple); font-size:16px;">2. Text Vectorization (Sentence Transformers)</code>
+<p style="color:var(--text-muted); font-size:13px; margin-top:10px;">Each transcript chunk is embedded inside the Streamlit app using the lightweight all-MiniLM-L6-v2 model, producing a 384-dimensional vector without calling the paid Hugging Face inference endpoint.</p>
 </div>
 <div style="flex: 1 1 30%; background:rgba(255,255,255,0.02); padding:20px; border-radius:8px;">
 <code style="color:var(--neon-purple); font-size:16px;">3. Cosine Similarity Engine</code>
@@ -438,12 +484,9 @@ with tab5:
     else:
         st.error("❌ **Gemini API Key:** Not found. Please add `GEMINI_API_KEY` to your environment.")
         
-    if HF_TOKEN:
-        st.success("✅ **Hugging Face Token:** Successfully loaded from secure `.env` file or Streamlit Secrets.")
-    else:
-        st.error("❌ **Hugging Face Token:** Not found. Please add `HF_TOKEN` to your environment.")
+    st.success("✅ **Embedding Model:** Runs inside the Streamlit app; no Hugging Face inference credits required.")
         
-    st.info("The system is now fully localized and secure. API Keys are no longer stored in active session state.")
+    st.info("Gemini is used for answer generation. Keep GEMINI_API_KEY in Streamlit Secrets; HF_TOKEN is no longer required.")
     st.markdown('</div>', unsafe_allow_html=True)
 
 # =========================================================================================
@@ -477,5 +520,5 @@ with tab6:
 st.markdown(
 """<div style="text-align:center; padding:70px; margin-top:100px; border-top:1px solid rgba(255,255,255,0.05); font-family:'Space Mono'; font-size:11px; color:rgba(148,163,184,0.3); letter-spacing:4px; text-transform:uppercase;">
 &copy; 2026 | Sigma Knowledge Nexus v18.4<br>
-<span style="color:rgba(0, 229, 255,0.5); font-size:10px; display:block; margin-top:10px;">Powered by Hybrid Google Gemini + HuggingFace Architecture</span>
+<span style="color:rgba(0, 229, 255,0.5); font-size:10px; display:block; margin-top:10px;">Powered by Google Gemini + Local Sentence Transformers</span>
 </div>""", unsafe_allow_html=True)

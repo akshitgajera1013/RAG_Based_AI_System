@@ -208,6 +208,19 @@ section[data-testid="stSidebar"] { background: #040406 !important; border-right:
 </style>""", unsafe_allow_html=True)
 
 # =========================================================================================
+# TIMESTAMP FORMATTING HELPERS
+# =========================================================================================
+def format_timestamp(seconds):
+    """Convert a timestamp in seconds to MM:SS or HH:MM:SS."""
+    total_seconds = max(0, int(float(seconds)))
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    return f"{minutes:02d}:{secs:02d}"
+
+
+# =========================================================================================
 # 4. SESSION STATE MANAGEMENT & HYBRID API ROUTING
 # =========================================================================================
 if "session_id" not in st.session_state: st.session_state["session_id"] = f"RAG-IDX-{str(uuid.uuid4())[:8].upper()}"
@@ -358,15 +371,33 @@ with tab1:
                     st.session_state["context_chunks"] = new_df
                     st.session_state["similarity_scores"] = similarities[max_indx]
                     
-                    # 4. Construct Prompt
-                    json_context = new_df[["title", "number", "start", "end", "text"]].to_json(orient="records")
-                    
-                    prompt = f"""I am teaching web development in my Sigma web development course. Here are video subtitle chunks containing video title, video number, start time in seconds, end time in seconds, the text at that time:
+                    # 4. Construct Prompt with user-friendly timestamps.
+                    # Keep numeric start/end values for the app, but give Gemini formatted values.
+                    prompt_chunks = new_df[["title", "number", "start", "end", "text"]].copy()
+                    prompt_chunks["start_timestamp"] = prompt_chunks["start"].apply(format_timestamp)
+                    prompt_chunks["end_timestamp"] = prompt_chunks["end"].apply(format_timestamp)
+                    json_context = prompt_chunks[
+                        ["title", "number", "start_timestamp", "end_timestamp", "text"]
+                    ].to_json(orient="records")
 
-                    {json_context}
-                    ---------------------------------
-                    "{query}"
-                    User asked this question related to the video chunks, you have to answer in a human way (dont mention the above format, its just for you) where and how much content is taught in which video (in which video and at what timestamp) and guide the user to go to that particular video. If user asks unrelated question, tell him that you can only answer questions related to the course"""
+                    prompt = f"""You are a helpful assistant for the Sigma web development course.
+Use only the video subtitle chunks below to answer course-related questions.
+
+RETRIEVED VIDEO CHUNKS (timestamps are already formatted):
+{json_context}
+
+USER QUESTION:
+{query}
+
+Instructions:
+- Answer naturally and help the user find the relevant course video.
+- Include the video number, exact video title, and relevant timestamp range.
+- ALWAYS display timestamps in MM:SS format, for example 08:21 - 08:25.
+- For videos lasting one hour or longer, use HH:MM:SS format.
+- NEVER show raw timestamps in seconds such as 501.0 seconds or 331.6 seconds.
+- Use the provided start_timestamp and end_timestamp values exactly; do not convert them yourself.
+- If the topic is mentioned only briefly, say so clearly.
+- If the question is unrelated to this course, explain that you can only answer questions related to the course."""
 
                     # 5. Call Generator LLM (Gemini)
                     response = inference(prompt)
@@ -398,10 +429,8 @@ with tab2:
         scores = st.session_state["similarity_scores"]
         
         for i, (index, row) in enumerate(df.iterrows()):
-            # Format timestamps from seconds to MM:SS
-            start_m, start_s = divmod(int(row['start']), 60)
-            end_m, end_s = divmod(int(row['end']), 60)
-            time_str = f"{start_m:02d}:{start_s:02d} - {end_m:02d}:{end_s:02d}"
+            # Format timestamps as MM:SS (or HH:MM:SS for videos over one hour).
+            time_str = f"{format_timestamp(row['start'])} - {format_timestamp(row['end'])}"
             
             st.markdown(
 f"""<div class="chunk-card">
@@ -456,7 +485,7 @@ with tab4:
         
         scores = st.session_state["similarity_scores"]
         df = st.session_state["context_chunks"]
-        labels = [f"Vid #{row['number']} - {row['start']}s" for idx, row in df.iterrows()]
+        labels = [f"Vid #{row['number']} - {format_timestamp(row['start'])}" for idx, row in df.iterrows()]
 
         fig = go.Figure()
         fig.add_trace(go.Bar(
